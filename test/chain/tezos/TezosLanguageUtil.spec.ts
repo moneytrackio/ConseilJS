@@ -1,6 +1,5 @@
 import { expect } from 'chai';
 import { TezosLanguageUtil } from '../../../src/chain/tezos/TezosLanguageUtil';
-import 'mocha';
 
 import * as fs from 'fs';
 import * as path from 'path';
@@ -143,17 +142,94 @@ describe("Tezos Micheline fragment decoding", () => {
         result = TezosLanguageUtil.translateMichelsonToMicheline(params);
         expect(result).to.equal('{ "prim": "Pair", "args": [ { "prim": "Pair", "args": [ [], { "int": "12" } ] }, { "int": "123" } ] }');
 
-        params = '(Pair (Pair { 1 } 12) 123)';
+
+        params = '(Pair (Pair 1 12) 123)';
         result = TezosLanguageUtil.translateMichelsonToMicheline(params);
         expect(result).to.equal('{ "prim": "Pair", "args": [ { "prim": "Pair", "args": [ { "int": "1" }, { "int": "12" } ] }, { "int": "123" } ] }');
 
+        params = '(Pair (Pair { 1 } 12) 123)';
+        result = TezosLanguageUtil.translateMichelsonToMicheline(params);
+        expect(result).to.equal('{ "prim": "Pair", "args": [ { "prim": "Pair", "args": [ [ { "int": "1" } ], { "int": "12" } ] }, { "int": "123" } ] }');
+
         params = '(Pair (Pair {0 ; "a"} 12) 123)';
         result = TezosLanguageUtil.translateMichelsonToMicheline(params);
-        expect(result).to.equal('{ "prim": "Pair", "args": [ { "prim": "Pair", "args": [ { "int": "0" },{ "string": "a" }, { "int": "12" } ] }, { "int": "123" } ] }');
+        expect(result).to.equal('{ "prim": "Pair", "args": [ { "prim": "Pair", "args": [ [ { "int": "0" },{ "string": "a" } ], { "int": "12" } ] }, { "int": "123" } ] }');
 
         params = '(Pair (Pair { Elt 0 "a"; } 12) 123)';
         result = TezosLanguageUtil.translateMichelsonToMicheline(params);
-        expect(result).to.equal('{ "prim": "Pair", "args": [ { "prim": "Pair", "args": [ { "prim": "Elt", "args": [ { "int": "0" }, { "string": "a" } ] }, { "int": "12" } ] }, { "int": "123" } ] }');
+        expect(result).to.equal('{ "prim": "Pair", "args": [ { "prim": "Pair", "args": [ [ { "prim": "Elt", "args": [ { "int": "0" }, { "string": "a" } ] } ], { "int": "12" } ] }, { "int": "123" } ] }');
+
+        params = '(Right { "tz1ZH85HuzzQATDFH7tnxfi8TFPUBnMXEcVA"; "tz1cZyyLMwho1DkvRHVTkkZBdSBwEFHRQz9A" })';
+        result = TezosLanguageUtil.translateMichelsonToMicheline(params);
+        expect(result).to.equal('{ "prim": "Right", "args": [ [ { "string": "tz1ZH85HuzzQATDFH7tnxfi8TFPUBnMXEcVA" },{ "string": "tz1cZyyLMwho1DkvRHVTkkZBdSBwEFHRQz9A" } ] ] }');
+
+        params = '(Pair (Pair 0x553246736447566b58312b6d397a6b75795759495065766c464a6237675531796d694a4358715269456647734c66537557743678586462733677672f697756476d7373474532716141656d7a63594b72634a517145673d3d 0x49913cca02161299607a603601c8306d32373786d206b6d67d5f34bc732108e1) 0x462b5055594b42382b523844664352773145633173773d3d)';
+        result = TezosLanguageUtil.translateMichelsonToMicheline(params);
+        expect(result).to.equal('{ "prim": "Pair", "args": [ { "prim": "Pair", "args": [ { "bytes": "553246736447566b58312b6d397a6b75795759495065766c464a6237675531796d694a4358715269456647734c66537557743678586462733677672f697756476d7373474532716141656d7a63594b72634a517145673d3d" }, { "bytes": "49913cca02161299607a603601c8306d32373786d206b6d67d5f34bc732108e1" } ] }, { "bytes": "462b5055594b42382b523844664352773145633173773d3d" } ] }');
+
+        params = `(Pair (Pair (Pair 0 0) (Pair "tz1Rp4Bv8iUhYnNoCryHQgNzN2D7i3L1LF9C" "123")) (Pair (Pair 4000000 50000000) (Pair 0xc2e588e23a6c8b8192da64af45b7b603ac420aefd57cc1570682350154e9c04e "tz1WxrQuZ4CK1MBUa2GqUWK1yJ4J6EtG1Gwi")))`;
+        result = TezosLanguageUtil.translateMichelsonToMicheline(params);
+        expect(result).to.equal('{ "prim": "Pair", "args": [ { "prim": "Pair", "args": [ { "prim": "Pair", "args": [ { "int": "0" }, { "int": "0" } ] }, { "prim": "Pair", "args": [ { "string": "tz1Rp4Bv8iUhYnNoCryHQgNzN2D7i3L1LF9C" }, { "string": "123" } ] } ] }, { "prim": "Pair", "args": [ { "prim": "Pair", "args": [ { "int": "4000000" }, { "int": "50000000" } ] }, { "prim": "Pair", "args": [ { "bytes": "c2e588e23a6c8b8192da64af45b7b603ac420aefd57cc1570682350154e9c04e" }, { "string": "tz1WxrQuZ4CK1MBUa2GqUWK1yJ4J6EtG1Gwi" } ] } ] } ] }');
+
+        params = `(Pair {} {"tz1beX9ZDev6SVVW9yJwNYA89362ZpWuDwou"})`;
+        result = TezosLanguageUtil.translateMichelsonToMicheline(params);
+        expect(result).to.equal('{ "prim": "Pair", "args": [ [], [ { "string": "tz1beX9ZDev6SVVW9yJwNYA89362ZpWuDwou" } ] ] }');
+
+        params = `(Pair {} (Pair None (Right Unit)))`;
+        result = TezosLanguageUtil.translateMichelsonToMicheline(params);
+        expect(result).to.equal('{ "prim": "Pair", "args": [ [], { "prim": "Pair", "args": [ { "prim": "None" }, { "prim": "Right", "args": [ { "prim": "Unit" } ] } ] } ] }');
+
+        params = `( Pair {} ( Pair ( Pair None ( Right Unit ) ) ( Pair ( Left ( Right Unit ) ) ( Right Unit ) ) ) )`;
+        result = TezosLanguageUtil.translateMichelsonToMicheline(params);
+        expect(result).to.equal('{ "prim": "Pair", "args": [ [], { "prim": "Pair", "args": [ { "prim": "Pair", "args": [ { "prim": "None" }, { "prim": "Right", "args": [ { "prim": "Unit" } ] } ] }, { "prim": "Pair", "args": [ { "prim": "Left", "args": [ { "prim": "Right", "args": [ { "prim": "Unit" } ] } ] }, { "prim": "Right", "args": [ { "prim": "Unit" } ] } ] } ] } ] }');
+
+        params = '( Pair Unit ( Pair ( Pair ( Pair None Unit ) ( Pair Unit Unit ) ) Unit ) )';
+        result = TezosLanguageUtil.translateMichelsonToMicheline(params);
+        expect(result).to.equal('{ "prim": "Pair", "args": [ { "prim": "Unit" }, { "prim": "Pair", "args": [ { "prim": "Pair", "args": [ { "prim": "Pair", "args": [ { "prim": "None" }, { "prim": "Unit" } ] }, { "prim": "Pair", "args": [ { "prim": "Unit" }, { "prim": "Unit" } ] } ] }, { "prim": "Unit" } ] } ] }');
+
+        params = '( Pair Unit ( Pair ( Pair ( Pair None ( Right Unit ) ) ( Pair Unit Unit ) ) Unit ) )';
+        result = TezosLanguageUtil.translateMichelsonToMicheline(params);
+        expect(result).to.equal('{ "prim": "Pair", "args": [ { "prim": "Unit" }, { "prim": "Pair", "args": [ { "prim": "Pair", "args": [ { "prim": "Pair", "args": [ { "prim": "None" }, { "prim": "Right", "args": [ { "prim": "Unit" } ] } ] }, { "prim": "Pair", "args": [ { "prim": "Unit" }, { "prim": "Unit" } ] } ] }, { "prim": "Unit" } ] } ] }');
+
+        params = '( Pair {} ( Pair ( Pair ( Pair None ( Right Unit ) ) ( Pair Unit Unit ) ) ( Left ( Right Unit ) ) ) )';
+        result = TezosLanguageUtil.translateMichelsonToMicheline(params);
+        expect(result).to.equal('{ "prim": "Pair", "args": [ [], { "prim": "Pair", "args": [ { "prim": "Pair", "args": [ { "prim": "Pair", "args": [ { "prim": "None" }, { "prim": "Right", "args": [ { "prim": "Unit" } ] } ] }, { "prim": "Pair", "args": [ { "prim": "Unit" }, { "prim": "Unit" } ] } ] }, { "prim": "Left", "args": [ { "prim": "Right", "args": [ { "prim": "Unit" } ] } ] } ] } ] }');
+
+        params = '( Pair {} ( Pair ( Pair ( Pair None ( Right Unit ) ) ( Pair ( Right Unit ) Unit ) ) ( Left ( Right Unit ) ) ) )';
+        result = TezosLanguageUtil.translateMichelsonToMicheline(params);
+        expect(result).to.equal('{ "prim": "Pair", "args": [ [], { "prim": "Pair", "args": [ { "prim": "Pair", "args": [ { "prim": "Pair", "args": [ { "prim": "None" }, { "prim": "Right", "args": [ { "prim": "Unit" } ] } ] }, { "prim": "Pair", "args": [ { "prim": "Right", "args": [ { "prim": "Unit" } ] }, { "prim": "Unit" } ] } ] }, { "prim": "Left", "args": [ { "prim": "Right", "args": [ { "prim": "Unit" } ] } ] } ] } ] }');
+
+        params = '( Pair ( Left ( Right Unit ) ) ( Right Unit ) )';
+        result = TezosLanguageUtil.translateMichelsonToMicheline(params);
+        expect(result).to.equal('{ "prim": "Pair", "args": [ { "prim": "Left", "args": [ { "prim": "Right", "args": [ { "prim": "Unit" } ] } ] }, { "prim": "Right", "args": [ { "prim": "Unit" } ] } ] }');
+
+        params = '( Pair ( Pair ( Right Unit ) ( Right Unit ) ) ( Right Unit ) )';
+        result = TezosLanguageUtil.translateMichelsonToMicheline(params);
+        expect(result).to.equal('{ "prim": "Pair", "args": [ { "prim": "Pair", "args": [ { "prim": "Right", "args": [ { "prim": "Unit" } ] }, { "prim": "Right", "args": [ { "prim": "Unit" } ] } ] }, { "prim": "Right", "args": [ { "prim": "Unit" } ] } ] }');
+
+        params = '( Pair ( Pair ( Right Unit ) ( Pair ( Right Unit ) ( Pair ( Right Unit ) ( Right Unit ) ) ) ) ( Right Unit ) )';
+        result = TezosLanguageUtil.translateMichelsonToMicheline(params);
+        expect(result).to.equal('{ "prim": "Pair", "args": [ { "prim": "Pair", "args": [ { "prim": "Right", "args": [ { "prim": "Unit" } ] }, { "prim": "Pair", "args": [ { "prim": "Right", "args": [ { "prim": "Unit" } ] }, { "prim": "Pair", "args": [ { "prim": "Right", "args": [ { "prim": "Unit" } ] }, { "prim": "Right", "args": [ { "prim": "Unit" } ] } ] } ] } ] }, { "prim": "Right", "args": [ { "prim": "Unit" } ] } ] }');
+
+        params = '( Pair ( Right Unit ) ( Left ( Pair ( Right Unit ) ( Right Unit ) ) ) )';
+        result = TezosLanguageUtil.translateMichelsonToMicheline(params);
+        expect(result).to.equal('{ "prim": "Pair", "args": [ { "prim": "Right", "args": [ { "prim": "Unit" } ] }, { "prim": "Left", "args": [ { "prim": "Pair", "args": [ { "prim": "Right", "args": [ { "prim": "Unit" } ] }, { "prim": "Right", "args": [ { "prim": "Unit" } ] } ] } ] } ] }');
+
+        params = '( Left ( Right ( Left ( Right ( Left ( Right None ) ) ) ) ) )';
+        result = TezosLanguageUtil.translateMichelsonToMicheline(params);
+        expect(result).to.equal('{ "prim": "Left", "args": [ { "prim": "Right", "args": [ { "prim": "Left", "args": [ { "prim": "Right", "args": [ { "prim": "Left", "args": [ { "prim": "Right", "args": [ { "prim": "None" } ] } ] } ] } ] } ] } ] }');
+
+        params = '( Pair ( Pair ( Right Unit ) ( Pair ( Right Unit ) ( Pair ( Left ( Right Unit ) ) ( Right Unit ) ) ) ) ( Right Unit ) )';
+        result = TezosLanguageUtil.translateMichelsonToMicheline(params);
+        expect(result).to.equal('{ "prim": "Pair", "args": [ { "prim": "Pair", "args": [ { "prim": "Right", "args": [ { "prim": "Unit" } ] }, { "prim": "Pair", "args": [ { "prim": "Right", "args": [ { "prim": "Unit" } ] }, { "prim": "Pair", "args": [ { "prim": "Left", "args": [ { "prim": "Right", "args": [ { "prim": "Unit" } ] } ] }, { "prim": "Right", "args": [ { "prim": "Unit" } ] } ] } ] } ] }, { "prim": "Right", "args": [ { "prim": "Unit" } ] } ] }');
+
+        params = `( Pair {} ( Pair ( Pair ( Pair None ( Right Unit ) ) ( Pair ( Left ( Right Unit ) ) ( Right Unit ) ) ) ( Left ( Right Unit ) ) ) )`;
+        result = TezosLanguageUtil.translateMichelsonToMicheline(params);
+        expect(result).to.equal('{ "prim": "Pair", "args": [ [], { "prim": "Pair", "args": [ { "prim": "Pair", "args": [ { "prim": "Pair", "args": [ { "prim": "None" }, { "prim": "Right", "args": [ { "prim": "Unit" } ] } ] }, { "prim": "Pair", "args": [ { "prim": "Left", "args": [ { "prim": "Right", "args": [ { "prim": "Unit" } ] } ] }, { "prim": "Right", "args": [ { "prim": "Unit" } ] } ] } ] }, { "prim": "Left", "args": [ { "prim": "Right", "args": [ { "prim": "Unit" } ] } ] } ] } ] }');
+
+        params = `( Pair ( Pair "A" True ) ( Pair ( Pair ( Pair {} (Pair (Pair ( Pair 0 {} ) ( Pair "B" "C" ) ) 0 ) ) ( Pair {} ( Pair ( Pair ( Pair None ( Right Unit ) ) ( Pair ( Left ( Right Unit ) ) ( Right Unit ) ) ) ( Left ( Right Unit ) ) ) ) ) 1 ) )`;
+        result = TezosLanguageUtil.translateMichelsonToMicheline(params);
+        expect(result).to.equal('{ "prim": "Pair", "args": [ { "prim": "Pair", "args": [ { "string": "A" }, { "prim": "True" } ] }, { "prim": "Pair", "args": [ { "prim": "Pair", "args": [ { "prim": "Pair", "args": [ [], { "prim": "Pair", "args": [ { "prim": "Pair", "args": [ { "prim": "Pair", "args": [ { "int": "0" }, [] ] }, { "prim": "Pair", "args": [ { "string": "B" }, { "string": "C" } ] } ] }, { "int": "0" } ] } ] }, { "prim": "Pair", "args": [ [], { "prim": "Pair", "args": [ { "prim": "Pair", "args": [ { "prim": "Pair", "args": [ { "prim": "None" }, { "prim": "Right", "args": [ { "prim": "Unit" } ] } ] }, { "prim": "Pair", "args": [ { "prim": "Left", "args": [ { "prim": "Right", "args": [ { "prim": "Unit" } ] } ] }, { "prim": "Right", "args": [ { "prim": "Unit" } ] } ] } ] }, { "prim": "Left", "args": [ { "prim": "Right", "args": [ { "prim": "Unit" } ] } ] } ] } ] } ] }, { "int": "1" } ] } ] }');
     });
 
     it('Serialize Micheline parameters', () => {

@@ -3,8 +3,8 @@ import {ConseilRequestError} from '../types/conseil/ConseilErrorTypes';
 import FetchSelector from '../utils/FetchSelector';
 import LogSelector from '../utils/LoggerSelector';
 
-const log = LogSelector.getLogger();
-const fetch = FetchSelector.getFetch();
+const log = LogSelector.log;
+const fetch = FetchSelector.fetch;
 
 /**
  * Utility functions for querying backend Conseil v2 API for metadata
@@ -20,7 +20,7 @@ export namespace ConseilDataClient {
      * @param query JSON object or text confirming to the Conseil query spec.
      */
     export async function executeEntityQuery(serverInfo: ConseilServerInfo, platform: string, network: string, entity: string, query: ConseilQuery): Promise<any[]> {
-        const url = `${serverInfo.url}/v2/data/${platform}/${network}/${entity}`
+        const url = `${serverInfo.url}/v2/data/${platform}/${network}/${entity}`;
         log.debug(`ConseilDataClient.executeEntityQuery request: ${url}, ${JSON.stringify(query)}`);
 
         return fetch(url, {
