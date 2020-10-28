@@ -182,6 +182,8 @@ export namespace TezosNodeWriter {
             throw new Error(`Could not parse JSON from response of chains/${chainid}/blocks/head/helpers/preapply/operation: '${text}' for ${payload}`);
         }
 
+        parseRPCError(text);
+
         return json as TezosTypes.AlphaOperationsWithMetadata[];
     }
 
@@ -195,6 +197,8 @@ export namespace TezosNodeWriter {
     export async function injectOperation(server: string, signedOpGroup: TezosTypes.SignedOperationGroup, chainid: string = 'main'): Promise<string> {
         const response = await performPostRequest(server, `injection/operation?chain=${chainid}`, signedOpGroup.bytes.toString('hex'));
         const text = await response.text();
+
+        parseRPCError(text);
 
         return text;
     }
@@ -706,6 +710,8 @@ export namespace TezosNodeWriter {
 
         const response = await performPostRequest(server, `chains/${chainid}/blocks/head/helpers/scripts/run_operation`, { chain_id: fake_chainid, operation: { branch: fake_branch, contents: operation, signature: fake_signature } });
         const responseText = await response.text();
+
+        parseRPCError(responseText);
 
         return JSON.parse(responseText);
     }
