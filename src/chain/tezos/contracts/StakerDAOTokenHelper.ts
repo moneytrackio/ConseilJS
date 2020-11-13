@@ -1,12 +1,10 @@
-import * as blakejs from 'blakejs';
 import { JSONPath } from 'jsonpath-plus';
-
-import { TezosLanguageUtil } from '../TezosLanguageUtil';
+import { KeyStore, Signer } from '../../../types/ExternalInterfaces';
+import * as TezosTypes from '../../../types/tezos/TezosChainTypes';
 import { TezosMessageUtils } from '../TezosMessageUtil';
 import { TezosNodeReader } from '../TezosNodeReader';
 import { TezosNodeWriter } from '../TezosNodeWriter';
-import { KeyStore } from '../../../types/wallet/KeyStore';
-import * as TezosTypes from '../../../types/tezos/TezosChainTypes';
+import { TezosContractUtils } from './TezosContractUtils';
 
 /**
  *
@@ -20,15 +18,7 @@ export namespace StakerDAOTokenHelper {
      * @param address Contract address to query.
      */
     export async function verifyDestination(server: string, address: string): Promise<boolean> {
-        const contract = await TezosNodeReader.getAccountForBlock(server, 'head', address);
-
-        if (!!!contract.script) { throw new Error(`No code found at ${address}`); }
-
-        const k = Buffer.from(blakejs.blake2s(JSON.stringify(contract.script.code), null, 16)).toString('hex');
-
-        if (k !== '0e3e137841a959521324b4ce20ca2df7') { throw new Error(`Contract does not match the expected code hash: ${k}, '0e3e137841a959521324b4ce20ca2df7'`); }
-
-        return true;
+        return TezosContractUtils.verifyDestination(server, address, '0e3e137841a959521324b4ce20ca2df7');
     }
 
     /**
@@ -37,11 +27,7 @@ export namespace StakerDAOTokenHelper {
      * @param script 
      */
     export function verifyScript(script: string): boolean {
-        const k = Buffer.from(blakejs.blake2s(TezosLanguageUtil.preProcessMichelsonScript(script).join('\n'), null, 16)).toString('hex');
-
-        if (k !== 'b77ada691b1d630622bea243696c84d7') { throw new Error(`Contract does not match the expected code hash: ${k}, 'b77ada691b1d630622bea243696c84d7'`); }
-
-        return true;
+        return TezosContractUtils.verifyScript(script, 'b77ada691b1d630622bea243696c84d7');
     }
 
     export async function getAccountBalance(server: string, mapid: number, account: string): Promise<number> {
@@ -75,15 +61,11 @@ export namespace StakerDAOTokenHelper {
         };
     }
 
-    export async function transferBalance(server: string, keystore: KeyStore, contract: string, fee: number, source: string, destination: string, amount: number, gas: number, freight: number) {
+    export async function transferBalance(server: string, signer: Signer, keystore: KeyStore, contract: string, fee: number, source: string, destination: string, amount: number, gas: number, freight: number) {
         const parameters = `(Right (Left (Left (Right (Pair "${source}" (Pair "${destination}" ${amount}))))))`;
 
-        const nodeResult = await TezosNodeWriter.sendContractInvocationOperation(server, keystore, contract, 0, fee, keystore.derivationPath, freight, gas, '', parameters, TezosTypes.TezosParameterFormat.Michelson);
+        const nodeResult = await TezosNodeWriter.sendContractInvocationOperation(server, signer, keystore, contract, 0, fee, freight, gas, '', parameters, TezosTypes.TezosParameterFormat.Michelson);
 
-        return clearRPCOperationGroupHash(nodeResult.operationGroupID);
-    }
-
-    function clearRPCOperationGroupHash(hash: string) {
-        return hash.replace(/\"/g, '').replace(/\n/, '');
+        return TezosContractUtils.clearRPCOperationGroupHash(nodeResult.operationGroupID);
     }
 }

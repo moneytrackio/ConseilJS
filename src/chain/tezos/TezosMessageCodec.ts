@@ -442,11 +442,7 @@ export namespace TezosMessageCodec {
                         + composite.entrypoint.split('').map(c => c.charCodeAt(0).toString(16)).join('');
                 }
 
-                if (result === '030b') { // { "prim": "Unit" }
-                    hex += '00';
-                } else {
-                    hex += ('0000000' + (result.length / 2).toString(16)).slice(-8) + result; // prefix byte length
-                }
+                hex += ('0000000' + (result.length / 2).toString(16)).slice(-8) + result; // prefix byte length
             }
         } else {
             hex += '00';
@@ -612,7 +608,7 @@ export namespace TezosMessageCodec {
             hex += parts
                 .map(p => TezosLanguageUtil.normalizeMichelineWhiteSpace(JSON.stringify(p)))
                 .map(p =>  TezosLanguageUtil.translateMichelineToHex(p))
-                .reduce((m, p) => { return m += ('0000000' + (p.length / 2).toString(16)).slice(-8) + p; }, '');
+                .reduce((m, p) => { return m + ('0000000' + (p.length / 2).toString(16)).slice(-8) + p; }, '');
         }
 
         return hex;

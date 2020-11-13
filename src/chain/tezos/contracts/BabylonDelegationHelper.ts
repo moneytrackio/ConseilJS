@@ -1,12 +1,11 @@
-import * as blakejs from 'blakejs';
 import { JSONPath } from 'jsonpath-plus';
 
-import { TezosLanguageUtil } from '../TezosLanguageUtil';
-import { TezosNodeReader } from '../TezosNodeReader';
-import { TezosNodeWriter } from '../TezosNodeWriter';
-import { KeyStore } from '../../../types/wallet/KeyStore';
+import { KeyStore, Signer } from '../../../types/ExternalInterfaces';
 import * as TezosTypes from '../../../types/tezos/TezosChainTypes';
 import { TezosConstants } from '../../../types/tezos/TezosConstants';
+import { TezosNodeReader } from '../TezosNodeReader';
+import { TezosNodeWriter } from '../TezosNodeWriter';
+import { TezosContractUtils } from './TezosContractUtils';
 
 export namespace BabylonDelegationHelper {
     /**
@@ -16,15 +15,7 @@ export namespace BabylonDelegationHelper {
      * @param address Contract address to query.
      */
     export async function verifyDestination(server: string, address: string): Promise<boolean> {
-        const contract = await TezosNodeReader.getAccountForBlock(server, 'head', address);
-
-        if (!!!contract.script) { throw new Error(`No code found at ${address}`); }
-
-        const k = Buffer.from(blakejs.blake2s(JSON.stringify(contract.script.code), null, 16)).toString('hex');
-
-        if (k !== 'd99cb8b4c7e40166f59c0f3c30724225') { throw new Error(`Contract does not match the expected code hash: ${k}, 'd99cb8b4c7e40166f59c0f3c30724225'`); }
-
-        return true;
+        return TezosContractUtils.verifyDestination(server, address, 'd99cb8b4c7e40166f59c0f3c30724225');
     }
 
     /**
@@ -33,11 +24,7 @@ export namespace BabylonDelegationHelper {
      * @param script 
      */
     export function verifyScript(script: string): boolean {
-        const k = Buffer.from(blakejs.blake2s(TezosLanguageUtil.preProcessMichelsonScript(script).join('\n'), null, 16)).toString('hex');
-
-        if (k !== 'a585489ffaee60d07077059539d5bfc8') { throw new Error(`Contract does not match the expected code hash: ${k}, 'a585489ffaee60d07077059539d5bfc8'`); }
-
-        return true;
+        return TezosContractUtils.verifyScript(script, 'a585489ffaee60d07077059539d5bfc8');
     }
 
     export async function getSimpleStorage(server: string, address: string): Promise<{administrator: string}> {
@@ -55,14 +42,14 @@ export namespace BabylonDelegationHelper {
      * @param fee Operation fee in µtz.
      * @param derivationPath Derivation path, necessary if signing with a Ledger device.
      */
-    export function setDelegate(server: string, keyStore: KeyStore, contract: string, delegate: string, fee: number, derivationPath: string = ''): Promise<TezosTypes.OperationResult> {
+    export function setDelegate(server: string, signer: Signer, keyStore: KeyStore, contract: string, delegate: string, fee: number): Promise<TezosTypes.OperationResult> {
         if (contract.startsWith('KT1')) {
             //const parameters = `{ DROP ; NIL operation ; PUSH key_hash "${delegate}" ; SOME ; SET_DELEGATE ; CONS }`;
             const parameters = `[{ "prim": "DROP" }, { "prim": "NIL", "args": [{ "prim": "operation" }] }, { "prim": "PUSH", "args": [{ "prim": "key_hash" }, { "string": "${delegate}" } ] }, { "prim": "SOME" }, { "prim": "SET_DELEGATE" }, { "prim": "CONS" } ]`;
 
-            return TezosNodeWriter.sendContractInvocationOperation(server, keyStore, contract, 0, fee, derivationPath, 0, TezosConstants.P005ManagerContractWithdrawalGasLimit, 'do', parameters, TezosTypes.TezosParameterFormat.Micheline);
+            return TezosNodeWriter.sendContractInvocationOperation(server, signer, keyStore, contract, 0, fee, 0, TezosConstants.P005ManagerContractWithdrawalGasLimit, 'do', parameters, TezosTypes.TezosParameterFormat.Micheline);
         } else { 
-            return TezosNodeWriter.sendDelegationOperation(server, keyStore, delegate, fee, derivationPath);
+            return TezosNodeWriter.sendDelegationOperation(server, signer, keyStore, delegate, fee);
         }
     }
 
@@ -74,14 +61,14 @@ export namespace BabylonDelegationHelper {
      * @param fee Operation fee in µtz.
      * @param derivationPath Derivation path, necessary if signing with a Ledger device.
      */
-    export function unSetDelegate(server: string, keyStore: KeyStore, contract: string, fee: number, derivationPath: string = ''): Promise<TezosTypes.OperationResult> {
+    export function unSetDelegate(server: string, signer: Signer, keyStore: KeyStore, contract: string, fee: number): Promise<TezosTypes.OperationResult> {
         if (contract.startsWith('KT1')) {
             //const parameters = '{ DROP ; NIL operation ; NONE key_hash ; SET_DELEGATE ; CONS }';
             const parameters = `[{ "prim": "DROP" }, { "prim": "NIL", "args": [{ "prim": "operation" }] }, { "prim": "NONE", "args": [{ "prim": "key_hash" }] }, { "prim": "SET_DELEGATE" }, { "prim": "CONS" } ]`;
 
-            return TezosNodeWriter.sendContractInvocationOperation(server, keyStore, contract, 0, fee, derivationPath, 0, TezosConstants.P005ManagerContractWithdrawalGasLimit, 'do', parameters, TezosTypes.TezosParameterFormat.Micheline);
+            return TezosNodeWriter.sendContractInvocationOperation(server, signer, keyStore, contract, 0, fee, 0, TezosConstants.P005ManagerContractWithdrawalGasLimit, 'do', parameters, TezosTypes.TezosParameterFormat.Micheline);
         } else {
-            return TezosNodeWriter.sendUndelegationOperation(server, keyStore, fee, derivationPath);
+            return TezosNodeWriter.sendUndelegationOperation(server, signer, keyStore, fee);
         }
     }
 
@@ -95,8 +82,8 @@ export namespace BabylonDelegationHelper {
      * @param amount Amount to transfer in µtz.
      * @param derivationPath Derivation path, necessary if signing with a Ledger device.
      */
-    export function withdrawDelegatedFunds(server: string, keyStore: KeyStore, contract: string, fee: number, amount: number, derivationPath: string = ''): Promise<TezosTypes.OperationResult> {
-        return sendDelegatedFunds(server, keyStore, contract, fee, amount, derivationPath, keyStore.publicKeyHash);
+    export function withdrawDelegatedFunds(server: string, signer: Signer, keyStore: KeyStore, contract: string, fee: number, amount: number): Promise<TezosTypes.OperationResult> {
+        return sendDelegatedFunds(server, signer, keyStore, contract, fee, amount, keyStore.publicKeyHash);
     }
 
     /**
@@ -110,7 +97,7 @@ export namespace BabylonDelegationHelper {
      * @param derivationPath Derivation path, necessary if signing with a Ledger device.
      * @param destination 
      */
-    export function sendDelegatedFunds(server: string, keyStore: KeyStore, contract: string, fee: number, amount: number, derivationPath: string = '', destination: string): Promise<TezosTypes.OperationResult> {
+    export function sendDelegatedFunds(server: string, signer: Signer, keyStore: KeyStore, contract: string, fee: number, amount: number, destination: string): Promise<TezosTypes.OperationResult> {
         let parameters =
          `[ { "prim": "DROP" },
             { "prim": "NIL", "args": [ { "prim": "operation" } ] },
@@ -121,7 +108,7 @@ export namespace BabylonDelegationHelper {
             { "prim": "TRANSFER_TOKENS" },
             { "prim": "CONS" } ]`;
 
-        return TezosNodeWriter.sendContractInvocationOperation(server, keyStore, contract, 0, fee, derivationPath, TezosConstants.P005ManagerContractWithdrawalStorageLimit, TezosConstants.P005ManagerContractWithdrawalGasLimit, 'do', parameters, TezosTypes.TezosParameterFormat.Micheline);
+        return TezosNodeWriter.sendContractInvocationOperation(server, signer, keyStore, contract, 0, fee, TezosConstants.P005ManagerContractWithdrawalStorageLimit, TezosConstants.P005ManagerContractWithdrawalGasLimit, 'do', parameters, TezosTypes.TezosParameterFormat.Micheline);
     }
 
     /**
@@ -134,11 +121,11 @@ export namespace BabylonDelegationHelper {
      * @param amount Amount to transfer in µtz.
      * @param derivationPath Derivation path, necessary if signing with a Ledger device.
      */
-    export function depositDelegatedFunds(server: string, keyStore: KeyStore, contract: string, fee: number, amount: number, derivationPath: string = ''): Promise<TezosTypes.OperationResult> {
-        return TezosNodeWriter.sendContractInvocationOperation(server, keyStore, contract, amount, fee, derivationPath, 0, TezosConstants.P005ManagerContractDepositGasLimit, undefined, undefined);
+    export function depositDelegatedFunds(server: string, signer: Signer, keyStore: KeyStore, contract: string, fee: number, amount: number): Promise<TezosTypes.OperationResult> {
+        return TezosNodeWriter.sendContractInvocationOperation(server, signer, keyStore, contract, amount, fee, 0, TezosConstants.P005ManagerContractDepositGasLimit, undefined, undefined);
     }
 
-    export function deployManagerContract(server: string, keyStore: KeyStore, delegate: string, fee: number, amount: number, derivationPath: string = ''): Promise<TezosTypes.OperationResult> {
+    export function deployManagerContract(server: string, signer: Signer, keyStore: KeyStore, delegate: string, fee: number, amount: number): Promise<TezosTypes.OperationResult> {
         const code = `[ { "prim": "parameter",
         "args":
           [ { "prim": "or",
@@ -172,6 +159,6 @@ export namespace BabylonDelegationHelper {
                       { "prim": "PAIR" } ] ] } ] ] } ]`;
         const storage = `{ "string": "${keyStore.publicKeyHash}" }`;
 
-        return TezosNodeWriter.sendContractOriginationOperation(server, keyStore, amount, delegate, fee, derivationPath, 600, 20000, code, storage, TezosTypes.TezosParameterFormat.Micheline);
+        return TezosNodeWriter.sendContractOriginationOperation(server, signer, keyStore, amount, delegate, fee, 600, 20000, code, storage, TezosTypes.TezosParameterFormat.Micheline);
     }
 }
