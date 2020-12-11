@@ -1,7 +1,7 @@
 import "mocha";
-import { expect, use} from "chai";
+import { expect } from "chai";
 
-import {ConseilRequestError, ConseilResponseError} from '../src/types/conseil/ConseilErrorTypes';
+import {ConseilRequestError, ConseilResponseError} from '../../src/types/conseil/ConseilErrorTypes';
 
 describe('ErrorTypes tests', () => {
     it('ConseilRequestError', async () => {
