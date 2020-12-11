@@ -1,6 +1,6 @@
 {
   "name": "moneytrackio-conseiljs",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Client-side library for Tezos dApp development.",
   "browser": "dist/index-web.js",
   "main": "dist/index.js",
