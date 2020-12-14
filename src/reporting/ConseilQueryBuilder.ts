@@ -1,4 +1,4 @@
-import {ConseilQuery, ConseilOperator, ConseilSortDirection, ConseilFunction, ConseilAggregation, ConseilOutput} from "../types/conseil/QueryTypes"
+import {ConseilQuery, ConseilOperator, ConseilSortDirection, ConseilFunction, ConseilOutput} from "../types/conseil/QueryTypes"
 
 export namespace ConseilQueryBuilder {
     /**
@@ -111,5 +111,18 @@ export namespace ConseilQueryBuilder {
         q.aggregation.push({ 'field': field, 'function': aggregationFunction });
 
         return q;
+    }
+
+    export function addExtendedParameter(query: ConseilQuery, parameter: string, value: any) {
+        query[parameter] = value;
+        return query;
+    }
+
+    export function removeParameter(query: ConseilQuery, parameter: string) {
+        if (query.hasOwnProperty(parameter)) {
+            delete query[parameter];
+        }
+
+        return query;
     }
 }

@@ -5,8 +5,8 @@ import { TezosRequestError } from '../../types/tezos/TezosErrorTypes';
 import FetchSelector from '../../utils/FetchSelector'
 import LogSelector from '../../utils/LoggerSelector';
 
-const log = LogSelector.getLogger();
-const fetch = FetchSelector.getFetch();
+const log = LogSelector.log;
+const fetch = FetchSelector.fetch;
 
 /**
  * Utility functions for interacting with a Tezos node.
@@ -38,6 +38,18 @@ export namespace TezosNodeReader {
     }
 
     /**
+     * Gets the delegate for a smart contract or an implicit account.
+     * 
+     * @param {string} server Tezos node to query
+     * @param {string} accountHash The smart contract address or implicit account to query.
+     * @returns The address of the delegate, or undefined if there was no delegate set.
+     */
+    export async function getDelegate(server: string, accountHash: string): Promise<string | undefined> {
+        const contractData = await getAccountForBlock(server, 'head', accountHash)
+        return (contractData.delegate as unknown) as string
+    }
+
+    /**
      * Gets a block for a given hash.
      * 
      * @param {string} server Tezos node to query
@@ -46,7 +58,7 @@ export namespace TezosNodeReader {
      * @returns {Promise<TezosRPCTypes.TezosBlock>} Block
      */
     export function getBlock(server: string, hash: string = 'head', chainid: string = 'main'): Promise<TezosRPCTypes.TezosBlock> {
-        return performGetRequest(server, `chains/${chainid}/blocks/${hash}`).then(json => { return <TezosRPCTypes.TezosBlock> json });
+        return performGetRequest(server, `chains/${chainid}/blocks/${hash}`).then(json => { return <TezosRPCTypes.TezosBlock>json });
     }
 
     /**
@@ -60,6 +72,50 @@ export namespace TezosNodeReader {
     }
 
     /**
+     * Returns a block at a given offset below head. 
+     * 
+     * @param {string} server Tezos node to query
+     * @param {number} offset Number of blocks below head, must be positive, 0 = head
+     * @param {string} chainid Chain id, expected to be 'main' or 'test', defaults to main
+     */
+    export async function getBlockAtOffset(server: string, offset: number, chainid: string = 'main'): Promise<TezosRPCTypes.TezosBlock> {
+        if (offset <= 0) { return getBlock(server); }
+
+        const head = await getBlock(server);
+        const level = Math.max(Number(head['header']['level']) - offset, 0);
+
+        return performGetRequest(server, `chains/${chainid}/blocks/${level}`).then(json => { return <TezosRPCTypes.TezosBlock>json });
+    }
+
+    /**
+     * Gets the block header for a given hash.
+     *
+     * @param {string} server Tezos node to query
+     * @param {string} hash Hash of the given block, defaults to 'head'
+     * @param {string} chainid Chain id, expected to be 'main' or 'test', defaults to main
+     * @returns {Promise<TezosRPCTypes.TezosBlockHeader>} Block header
+     */
+    export function getBlockHeader(server: string, hash: string = 'head', chainid: string = 'main'): Promise<TezosRPCTypes.TezosBlockHeader> {
+        return performGetRequest(server, `chains/${chainid}/blocks/${hash}/header`).then(json => { return <TezosRPCTypes.TezosBlockHeader>json });
+    }
+
+    /**
+     * Returns the block header at a given offset below head.
+     *
+     * @param {string} server Tezos node to query
+     * @param {number} offset Number of blocks below head, must be positive, 0 = head
+     * @param {string} chainid Chain id, expected to be 'main' or 'test', defaults to main
+     */
+    export async function getBlockHeaderAtOffset(server: string, offset: number, chainid: string = 'main'): Promise<TezosRPCTypes.TezosBlockHeader> {
+        if (offset <= 0) { return getBlockHeader(server); }
+
+        const header = await getBlockHeader(server);
+        const level = Math.max(Number(header.level) - offset, 0);
+
+        return performGetRequest(server, `chains/${chainid}/blocks/${level}/header`).then(json => { return <TezosRPCTypes.TezosBlockHeader>json });
+    }
+
+    /**
      * Fetches a specific account for a given block.
      * 
      * @param {string} server Tezos node to query
@@ -70,7 +126,7 @@ export namespace TezosNodeReader {
      */
     export function getAccountForBlock(server: string, blockHash: string, accountHash: string, chainid: string = 'main'): Promise<TezosRPCTypes.Contract> {
         return performGetRequest(server, `chains/${chainid}/blocks/${blockHash}/context/contracts/${accountHash}`)
-            .then(json => <TezosRPCTypes.Contract> json);
+            .then(json => <TezosRPCTypes.Contract>json);
     }
 
     /**
@@ -96,8 +152,8 @@ export namespace TezosNodeReader {
      * @param chainid Chain id, expected to be 'main' or 'test', defaults to main
      */
     export async function getSpendableBalanceForAccount(server: string, accountHash: string, chainid: string = 'main'): Promise<number> {
-        const account = await performGetRequest(server, `chains/${chainid}/blocks/head/context/contracts/${accountHash}`)
-            .then(json => <TezosRPCTypes.Contract> json);
+        const account = await performGetRequest(server, `chains/${chainid}/blocks/head/context/contracts/${accountHash}`) // TODO: get /balance
+            .then(json => <TezosRPCTypes.Contract>json);
         return parseInt(account.balance.toString(), 10);
     }
 
@@ -110,13 +166,13 @@ export namespace TezosNodeReader {
      * @param {string} chainid Chain id, expected to be 'main' or 'test', defaults to main.
      * @returns {Promise<string>} Manager public key
      */
-    export function getAccountManagerForBlock(server: string, block: string, accountHash: string, chainid: string = 'main'): Promise<string> {
-        return performGetRequest(server, `chains/${chainid}/blocks/${block}/context/contracts/${accountHash}/manager_key`)
-            .then(result => (result && result.toString() !== 'null') ? result.toString() : '').catch(err => '');
+    export async function getAccountManagerForBlock(server: string, block: string, accountHash: string, chainid: string = 'main'): Promise<string> {
+        const key = await performGetRequest(server, `chains/${chainid}/blocks/${block}/context/contracts/${accountHash}/manager_key`);
+        return key ? key.toString() : '';
     }
 
     /**
-     * Indicates whether an account is implicit and empty. If true, transaction will burn 0.257tz.
+     * Indicates whether an account is implicit and empty. If true, transaction will burn 0.06425tz.
      *
      * @param {string} server Tezos node to connect to
      * @param {string} accountHash Account address
@@ -140,7 +196,6 @@ export namespace TezosNodeReader {
      */
     export async function isManagerKeyRevealedForAccount(server: string, accountHash: string): Promise<boolean> {
         const managerKey = await getAccountManagerForBlock(server, 'head', accountHash);
-
         return managerKey.length > 0;
     }
 
@@ -165,7 +220,7 @@ export namespace TezosNodeReader {
      * Queries the /mempool/pending_operations RPC and parses it looking for the provided operation group id.
      * 
      * @param {string} server Tezos node to connect to
-     * @param operationGroupId 
+     * @param {string} operationGroupId 
      * @param {string} chainid Chain id, expected to be 'main' or 'test', defaults to main.
      */
     export async function getMempoolOperation(server: string, operationGroupId: string, chainid: string = 'main') {
@@ -184,10 +239,10 @@ export namespace TezosNodeReader {
      * @returns {Promise<number>} Number of blocks until the operation expires.
      */
     export async function estimateBranchTimeout(server: string, branch: string, chainid: string = 'main'): Promise<number> {
-        const refBlock = getBlock(server, branch, chainid);
-        const headBlock = getBlock(server, 'head', chainid);
+        const refBlockHeader = getBlockHeader(server, branch, chainid);
+        const headBlockHeader = getBlockHeader(server, 'head', chainid);
 
-        var result = await Promise.all([refBlock, headBlock]).then(blocks => Number(blocks[1]['header']['level']) - Number(blocks[0]['header']['level']));
+        var result = await Promise.all([refBlockHeader, headBlockHeader]).then(blocksHeader => Number(blocksHeader[1].level) - Number(blocksHeader[0].level));
 
         return 64 - result; // TODO: named const
     }

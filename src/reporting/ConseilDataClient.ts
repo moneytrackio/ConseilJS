@@ -3,8 +3,8 @@ import {ConseilRequestError} from '../types/conseil/ConseilErrorTypes';
 import FetchSelector from '../utils/FetchSelector';
 import LogSelector from '../utils/LoggerSelector';
 
-const log = LogSelector.getLogger();
-const fetch = FetchSelector.getFetch();
+const log = LogSelector.log;
+const fetch = FetchSelector.fetch;
 
 /**
  * Utility functions for querying backend Conseil v2 API for metadata
@@ -26,6 +26,7 @@ export namespace ConseilDataClient {
         return fetch(url, {
             method: 'post',
             headers: { 'apiKey': serverInfo.apiKey, 'Content-Type': 'application/json' },
+            cache: 'no-store',
             body: JSON.stringify(query)
         })
         .then(r => {

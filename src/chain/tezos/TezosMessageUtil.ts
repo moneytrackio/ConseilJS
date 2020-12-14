@@ -1,14 +1,17 @@
 /*eslint no-bitwise: 0*/
 import base58check from "bs58check";
 import bigInt from 'big-integer';
+import * as blakejs from 'blakejs';
 
 import { SignedOperationGroup } from '../../types/tezos/TezosChainTypes';
-import { CryptoUtils } from '../../utils/CryptoUtils';
 import { TezosLanguageUtil } from './TezosLanguageUtil';
 import { TezosParameterFormat } from '../../types/tezos/TezosChainTypes';
+import { SignerCurve } from "../../types/ExternalInterfaces";
 
 /**
  * A collection of functions to encode and decode various Tezos P2P message components like amounts, addresses, hashes, etc.
+ * 
+ * Magic prefixes taken from: https://gitlab.com/tezos/tezos/blob/master/src/lib_crypto/base58.ml#L343
  */
 export namespace TezosMessageUtils {
     /**
@@ -34,7 +37,7 @@ export namespace TezosMessageUtils {
     export function writeInt(value: number): string {
         if (value < 0) { throw new Error('Use writeSignedInt to encode negative numbers'); }
         //@ts-ignore
-        return Buffer.from(Buffer.from(CryptoUtils.twoByteHex(value), 'hex').map((v, i) => { return i === 0 ? v : v ^ 0x80; }).reverse()).toString('hex');
+        return Buffer.from(Buffer.from(twoByteHex(value), 'hex').map((v, i) => { return i === 0 ? v : v ^ 0x80; }).reverse()).toString('hex');
     }
 
     /**
@@ -70,7 +73,7 @@ export namespace TezosMessageUtils {
             arr.push(1);
         }
 
-        return arr.map(v => ('0' + v.toString(16)).slice(-2)).join('');
+        return arr.map(w => ('0' + w.toString(16)).slice(-2)).join('');
     }
 
     /**
@@ -80,7 +83,7 @@ export namespace TezosMessageUtils {
     export function readInt(hex: string): number {
         //@ts-ignore
         const h = Buffer.from(Buffer.from(hex, 'hex').reverse().map((v, i) => { return i === 0 ? v : v & 0x7f; })).toString('hex')
-        return CryptoUtils.fromByteHex(h);
+        return fromByteHex(h);
     }
 
     export function readSignedInt(hex: string): number {
@@ -105,7 +108,7 @@ export namespace TezosMessageUtils {
      * @param {number} offset Offset within the message to start decoding from.
      */
     export function findInt(hex: string, offset: number, signed: boolean = false) {
-        let buffer = "";
+        let buffer = '';
         let i = 0;
         while (offset + i * 2 < hex.length) {
             let start = offset + i * 2;
@@ -114,7 +117,7 @@ export namespace TezosMessageUtils {
             buffer += part;
             i += 1;
 
-            if (parseInt(part, 16) < 127) { break; }
+            if (parseInt(part, 16) < 128) { break; }
         }
 
         return signed ? { value: readSignedInt(buffer), length: i * 2 } : { value: readInt(buffer), length: i * 2 };
@@ -261,7 +264,7 @@ export namespace TezosMessageUtils {
             return "00" + base58check.decode(publicKey).slice(4).toString("hex");
         } else if (publicKey.startsWith("sppk")) { // secp256k1
             return "01" + base58check.decode(publicKey).slice(4).toString("hex");
-        } else if (publicKey.startsWith("p2pk")) { // p256
+        } else if (publicKey.startsWith("p2pk")) { // secp256r1 (p256)
             return "02" + base58check.decode(publicKey).slice(4).toString("hex");
         } else {
             throw new Error('Unrecognized key type');
@@ -269,71 +272,81 @@ export namespace TezosMessageUtils {
     }
 
     /**
-     * Reads a key without a prefix from binary and decodes it into a Base58-check representation.
+     * Deserialize a key without a prefix from binary and decodes it into a Base58-check representation.
      * 
      * @param {Buffer | Uint8Array} b Bytes containing the key.
-     * @param hint One of 'edsk' (private key), 'edpk' (public key).
+     * @param hint 
      */
     export function readKeyWithHint(b: Buffer | Uint8Array, hint: string): string {
         const key = !(b instanceof Buffer) ? Buffer.from(b) : b;
 
-        if (hint === 'edsk') {
+        if (hint === 'edsk') { // ed25519 secret key
             return base58check.encode(Buffer.from('2bf64e07' + key.toString('hex'), 'hex'));
-        } else if (hint === 'edpk') {
+        } else if (hint === 'edpk') { // ed25519 public key
             return readPublicKey(`00${key.toString('hex')}`);
+        } else if (hint === 'sppk') {// secp256k1 public key
+            return readPublicKey(`01${key.toString('hex')}`);
+        } else if (hint === 'p2pk') {// secp256r1 public key
+            return readPublicKey(`02${key.toString('hex')}`);
         } else {
             throw new Error(`Unrecognized key hint, '${hint}'`);
         }
     }
 
     /**
-     * Writes a Base58-check key into hex.
+     * Serializes a Base58-check key into hex.
      * 
      * @param key Key to encode, input is expected to be a base58-check encoded string.
      * @param hint Key type, usually the curve it was generated from, eg: 'edsk'.
      */
     export function writeKeyWithHint(key: string, hint: string): Buffer {
-        if (hint === 'edsk' || hint === 'edpk') { // ed25519
+        if (hint === 'edsk' || hint === 'edpk' || hint === 'sppk' || hint === 'p2pk') {
             return base58check.decode(key).slice(4);
-        //} else if (hint === 'sppk') { // secp256k1
-        //} else if (hint === 'p2pk') { // secp256r1
         } else {
             throw new Error(`Unrecognized key hint, '${hint}'`);
         }
     }
 
     /**
-     * Reads a signature value without a prefix from binary and decodes it into a Base58-check representation.
+     * Deserializes a signature value without a prefix from binary and decodes it into a Base58-check representation.
      * 
      * @param {Buffer | Uint8Array} b Bytes containing signature.
      * @param hint Support 'edsig'.
      */
-    export function readSignatureWithHint(b: Buffer | Uint8Array, hint: string): string {
+    export function readSignatureWithHint(b: Buffer | Uint8Array, hint: string | SignerCurve): string {
         const sig = !(b instanceof Buffer) ? Buffer.from(b) : b;
 
-        if (hint === 'edsig') {
+        if (hint === 'edsig' || hint === SignerCurve.ED25519) {
             return base58check.encode(Buffer.from('09f5cd8612' + sig.toString('hex'), 'hex'));
+        } else if (hint === 'spsig' || hint === SignerCurve.SECP256K1) {
+            return base58check.encode(Buffer.from('0d7365133f' + sig.toString('hex'), 'hex'));
+        } else if (hint === 'p2sig' || hint === SignerCurve.SECP256R1) {
+            return base58check.encode(Buffer.from('36f02c34' + sig.toString('hex'), 'hex'));
         } else {
             throw new Error(`Unrecognized signature hint, '${hint}'`);
         }
     }
 
     /**
-     * Writes a Base58-check key into hex.
+     * Serializes a Base58-check key into hex.
      * 
      * @param key Key to encode, input is expected to be a base58-check encoded string.
      * @param hint Key type, usually the curve it was generated from, eg: 'edsig'.
      */
-    export function writeSignatureWithHint(sig: string, hint: string): Buffer {
-        if (hint === 'edsig') {
-            return base58check.decode(sig).slice(5);
+    export function writeSignatureWithHint(sig: string, hint: string | SignerCurve): Buffer {
+        if (hint === 'edsig' || hint === SignerCurve.ED25519) {
+            return base58check.decode(sig).slice("edsig".length);
+        } else if (hint === 'spsig' || hint === SignerCurve.SECP256K1) {
+            return base58check.decode(sig).slice("spsig".length);
+        } else if (hint === 'p2sig' || hint === SignerCurve.SECP256R1) {
+            return base58check.decode(sig).slice("p2sig".length);
         } else {
             throw new Error(`Unrecognized key hint, '${hint}'`);
         }
     }
 
     /**
-     * Reads a binary buffer and decodes it into a Base58-check string subject to a hint. Calling this method with a blank hint makes it a wraper for base58check.encode().
+     * Deserializes a binary buffer and decodes it into a Base58-check string subject to a hint. Calling this method with a blank hint makes it a wraper for base58check.encode().
      * 
      * @param {Buffer | Uint8Array} b Bytes to encode
      * @param hint One of: 'op' (operation encoding helper), 'p' (proposal), '' (blank)
@@ -370,7 +383,7 @@ export namespace TezosMessageUtils {
      * @returns {string} Base58Check hash of signed operation
      */
     export function computeOperationHash(signedOpGroup: SignedOperationGroup): string {
-        const hash = CryptoUtils.simpleHash(signedOpGroup.bytes, 32);
+        const hash = simpleHash(signedOpGroup.bytes, 32);
         return readBufferWithHint(hash, "op");
     }
 
@@ -382,7 +395,7 @@ export namespace TezosMessageUtils {
      * @returns Base58-check encoded key hash.
      */
     export function computeKeyHash(key: Buffer, prefix: string = 'tz1'): string {
-        const hash = CryptoUtils.simpleHash(key, 20);
+        const hash = simpleHash(key, 20);
         return readAddressWithHint(hash, prefix);
     }
 
@@ -398,7 +411,7 @@ export namespace TezosMessageUtils {
      * @param format value format, this argument is used to encode complex values, Michelson and Micheline encoding is supported with the internal parser.
      */
     export function writePackedData(value: string | number | Buffer, type: string, format: TezosParameterFormat = TezosParameterFormat.Micheline): string {
-        switch(type) {
+        switch (type) {
             case 'int': {
                 return '0500' + writeSignedInt(value as number);
             }
@@ -425,7 +438,7 @@ export namespace TezosMessageUtils {
                     if (format === TezosParameterFormat.Micheline) {
                         return `05${TezosLanguageUtil.translateMichelineToHex(value as string)}`;
                     } else if (format === TezosParameterFormat.Michelson) {
-                        const micheline = TezosLanguageUtil.translateMichelsonToMicheline(value as string)
+                        const micheline = TezosLanguageUtil.translateMichelsonToMicheline(value as string);
                         return `05${TezosLanguageUtil.translateMichelineToHex(micheline)}`;
                     } else {
                         throw new Error(`Unsupported format, ${format}, provided`);
@@ -438,12 +451,13 @@ export namespace TezosMessageUtils {
     }
 
     /**
+     * Reads PACKed data into an output format specified in the type parameter.
      * 
-     * @param hex 
-     * @param type 
+     * @param {string} hex 
+     * @param {string} type One of int, nat, string, key_hash, address, bytes, michelson, micheline (default)
      */
-    export function readPackedData(hex: string, type: string) : string | number {
-        switch(type) {
+    export function readPackedData(hex: string, type: string): string | number {
+        switch (type) {
             case 'int': {
                 return readSignedInt(hex.slice(4));
             }
@@ -462,6 +476,9 @@ export namespace TezosMessageUtils {
             case 'bytes': {
                 return hex.slice(4 + 8);
             }
+            case 'michelson': {
+                return TezosLanguageUtil.normalizeMichelsonWhiteSpace(TezosLanguageUtil.hexToMichelson(hex.slice(2)).code);
+            }
             default: {
                 return TezosLanguageUtil.hexToMicheline(hex.slice(2)).code;
             }
@@ -472,6 +489,111 @@ export namespace TezosMessageUtils {
      * Created a hash of the provided buffer that can then be used to query a big_map structure on chain.
      */
     export function encodeBigMapKey(key: Buffer): string {
-        return readBufferWithHint(CryptoUtils.simpleHash(key, 32), 'expr');
+        return readBufferWithHint(simpleHash(key, 32), 'expr');
+    }
+
+    /**
+     * Computes a BLAKE2b message hash of the requested length.
+     * 
+     * @param {Buffer} payload Buffer to hash
+     * @param {number} length Length of hash to produce
+     */
+    export function simpleHash(payload: Buffer, length: number): Buffer {
+        return Buffer.from(blakejs.blake2b(payload, null, length)); // Same as libsodium.crypto_generichash
+    }
+
+    /**
+     * Encodes the provided number as base128.
+     * @param n 
+     */
+    function twoByteHex(n: number): string {
+        if (n < 128) { return ('0' + n.toString(16)).slice(-2); }
+
+        let h = '';
+        if (n > 2147483648) {
+            let r = bigInt(n);
+            while (r.greater(0)) {
+                h = ('0' + (r.and(127)).toString(16)).slice(-2) + h;
+                r = r.shiftRight(7);
+            }
+        } else {
+            let r = n;
+            while (r > 0) {
+                h = ('0' + (r & 127).toString(16)).slice(-2) + h;
+                r = r >> 7;
+            }
+        }
+
+        return h;
+    }
+
+    /**
+     * Decodes the provided base128 string into a number
+     * @param s 
+     */
+    function fromByteHex(s: string): number {
+        if (s.length === 2) { return parseInt(s, 16); }
+
+        if (s.length <= 8) {
+            let n = parseInt(s.slice(-2), 16);
+
+            for (let i = 1; i < s.length / 2; i++) {
+                n += parseInt(s.slice(-2 * i - 2, -2 * i), 16) << (7 * i);
+            }
+
+            return n;
+        }
+
+        let n = bigInt(parseInt(s.slice(-2), 16));
+
+        for (let i = 1; i < s.length / 2; i++) {
+            n = n.add(bigInt(parseInt(s.slice(-2 * i - 2, -2 * i), 16)).shiftLeft(7 * i));
+        }
+
+        return n.toJSNumber();
+    }
+
+    /**
+     * Calculate the address of a contract that was originated.
+     *
+     * @param operationHash The operation group hash.
+     * @param index The index of the origination operation in the operation group.
+     */
+    export function calculateContractAddress(operationHash: string, index: number): string {
+        // Decode and slice two byte prefix off operation hash.
+        const decoded: Uint8Array = base58check.decode(operationHash).slice(2)
+
+        // Merge the decoded buffer with the operation prefix.
+        let decodedAndOperationPrefix: Array<number> = []
+        for (let i = 0; i < decoded.length; i++) {
+            decodedAndOperationPrefix.push(decoded[i])
+        }
+        decodedAndOperationPrefix = decodedAndOperationPrefix.concat([
+            (index & 0xff000000) >> 24,
+            (index & 0x00ff0000) >> 16,
+            (index & 0x0000ff00) >> 8,
+            index & 0x000000ff,
+        ])
+
+        // Hash and encode.
+        const hash = blakejs.blake2b(new Uint8Array(decodedAndOperationPrefix), null, 20)
+        const smartContractAddressPrefix = new Uint8Array([2, 90, 121]) // KT1
+        const prefixedBytes = mergeBytes(smartContractAddressPrefix, hash)
+        return base58check.encode(prefixedBytes)
+    }
+
+    /**
+     * Helper to merge two Uint8Arrays.
+     * 
+     * @param a The first array.
+     * @param b The second array.
+     * @returns A new array that contains b appended to the end of a.
+     */
+    function mergeBytes(a: Uint8Array, b: Uint8Array): Uint8Array {
+        const merged = new Uint8Array(a.length + b.length)
+        merged.set(a)
+        merged.set(b, a.length)
+
+        return merged
     }
 }
